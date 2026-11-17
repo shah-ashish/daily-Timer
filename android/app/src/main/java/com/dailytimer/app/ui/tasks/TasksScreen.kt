@@ -59,6 +59,39 @@ fun TasksScreen(
         refreshTasks()
     }
 
+    fun parseTimeToMillis(dateStr: String, timeStr: String): Long {
+        val formats = listOf(
+            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.US),
+            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.getDefault()),
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US),
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+        )
+        for (f in formats) {
+            try {
+                f.isLenient = true
+                val parsed = f.parse("$dateStr ${timeStr.trim().replace("\u00A0", " ")}")
+                if (parsed != null) return parsed.time
+            } catch (_: Exception) {}
+        }
+        return 0L
+    }
+
+    fun getRuntimeStatus(task: Task): String {
+        if (task.status == "COMPLETED") return "COMPLETED"
+        val now = System.currentTimeMillis()
+        val startMillis = parseTimeToMillis(task.date, task.startTime)
+        val endMillis = if (task.endTime.isNotBlank()) parseTimeToMillis(task.date, task.endTime) else 0L
+
+        if (startMillis == 0L) return task.status
+
+        return when {
+            endMillis > startMillis && now in startMillis..endMillis -> "IN_PROGRESS"
+            endMillis > 0L && now > endMillis -> "IN_PROGRESS"
+            now >= startMillis && endMillis == 0L -> "IN_PROGRESS"
+            else -> "UPCOMING"
+        }
+    }
+
     // Native DatePickerDialog
     val datePickerDialog = remember {
         DatePickerDialog(
@@ -73,6 +106,61 @@ fun TasksScreen(
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH),
             calendar.get(Calendar.DAY_OF_MONTH)
+        )
+    }
+
+    // Delete Confirmation Dialog
+    if (taskToDelete != null) {
+        val target = taskToDelete!!
+        AlertDialog(
+            onDismissRequest = { taskToDelete = null },
+            title = {
+                Text(
+                    text = "Delete Task",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete \"${target.taskName}\"? This action cannot be undone.",
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        dbHelper.deleteTask(target.id)
+                        NotificationScheduler.cancelTaskNotification(context, target.id)
+                        taskToDelete = null
+                        refreshTasks()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "Delete",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { taskToDelete = null }
+                ) {
+                    Text(
+                        text = "Cancel",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = MaterialTheme.colorScheme.surface
         )
     }
 
@@ -92,7 +180,7 @@ fun TasksScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 20.dp)
         ) {
-            // Header
+            // Header: iOS Large Title
             Text(
                 text = "Tasks",
                 style = MaterialTheme.typography.headlineLarge.copy(
@@ -104,9 +192,9 @@ fun TasksScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Date Filter Section (Single date selector row)
+            // Single Date Selector Card
             Text(
-                text = "DATE FILTER",
+                text = "SELECT DATE",
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.sp
@@ -120,7 +208,8 @@ fun TasksScreen(
                     .fillMaxWidth()
                     .clickable { datePickerDialog.show() },
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -131,54 +220,57 @@ fun TasksScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(CoralPrimary.copy(alpha = 0.12f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.CalendarToday,
-                                contentDescription = "Calendar",
+                                contentDescription = "Date",
                                 tint = CoralPrimary,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
                         Column {
                             Text(
-                                text = "Selected Date",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
-                            Text(
                                 text = selectedDateDisplay,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontWeight = FontWeight.SemiBold,
                                     fontSize = 15.sp
                                 ),
                                 color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "${tasksForDate.size} scheduled tasks",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                             )
                         }
                     }
 
                     Text(
-                        text = "Change ▾",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = CoralPrimary
+                        text = "Change",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = CoralPrimary
+                        )
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Tasks List Section
+            // Section: Tasks List for Selected Date
             Text(
-                text = "SCHEDULE (${tasksForDate.size} ${if (tasksForDate.size == 1) "TASK" else "TASKS"})",
+                text = "SCHEDULED TIMELINE",
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.sp
@@ -196,7 +288,7 @@ fun TasksScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(28.dp),
+                            .padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
@@ -221,6 +313,14 @@ fun TasksScreen(
                     Column(modifier = Modifier.fillMaxWidth()) {
                         tasksForDate.forEachIndexed { index, task ->
                             val isCompleted = task.status == "COMPLETED"
+                            val runtimeStatus = getRuntimeStatus(task)
+                            val isInProgress = runtimeStatus == "IN_PROGRESS"
+
+                            val timeSpan = if (task.endTime.isNotBlank()) {
+                                "${task.startTime} – ${task.endTime}"
+                            } else {
+                                task.startTime
+                            }
 
                             Row(
                                 modifier = Modifier
@@ -264,14 +364,14 @@ fun TasksScreen(
                                             Icon(
                                                 imageVector = Icons.Rounded.Schedule,
                                                 contentDescription = "Time",
-                                                tint = CoralPrimary,
+                                                tint = if (isInProgress) CoralPrimary else CoralPrimary.copy(alpha = 0.8f),
                                                 modifier = Modifier.size(14.dp)
                                             )
                                             Text(
-                                                text = task.startTime,
+                                                text = timeSpan,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = CoralPrimary
+                                                color = if (isInProgress) CoralPrimary else CoralPrimary.copy(alpha = 0.8f)
                                             )
                                         }
 
@@ -299,17 +399,51 @@ fun TasksScreen(
                                     }
                                 }
 
-                                // Delete task button
-                                IconButton(
-                                    onClick = { taskToDelete = task },
-                                    modifier = Modifier.size(28.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Delete,
-                                        contentDescription = "Delete",
-                                        tint = Color(0xFFE53935).copy(alpha = 0.7f),
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    // Status chip
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(
+                                                when {
+                                                    isInProgress -> CoralPrimary.copy(alpha = 0.15f)
+                                                    isCompleted -> EmeraldSuccess.copy(alpha = 0.15f)
+                                                    else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                                                }
+                                            )
+                                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            text = when {
+                                                isInProgress -> "IN PROGRESS"
+                                                isCompleted -> "COMPLETED"
+                                                else -> "UPCOMING"
+                                            },
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when {
+                                                isInProgress -> CoralPrimary
+                                                isCompleted -> EmeraldSuccess
+                                                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                            }
+                                        )
+                                    }
+
+                                    // Delete task button
+                                    IconButton(
+                                        onClick = { taskToDelete = task },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Delete,
+                                            contentDescription = "Delete",
+                                            tint = Color(0xFFE53935).copy(alpha = 0.7f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
 
@@ -336,63 +470,19 @@ fun TasksScreen(
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = CoralPrimary)
             ) {
-                Icon(imageVector = Icons.Rounded.Add, contentDescription = "Add", modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = "Add Task",
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Add Task to this Date",
+                    text = "Add Task for This Date",
                     fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = Color.White
                 )
             }
-        }
-
-        // Delete Confirmation Dialog
-        taskToDelete?.let { task ->
-            AlertDialog(
-                onDismissRequest = { taskToDelete = null },
-                title = {
-                    Text(
-                        text = "Delete Task",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                },
-                text = {
-                    Text(
-                        text = "Are you sure you want to delete \"${task.taskName}\"? This action cannot be undone.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            NotificationScheduler.cancelTaskNotification(context, task.id)
-                            dbHelper.deleteTask(task.id)
-                            refreshTasks()
-                            taskToDelete = null
-                        }
-                    ) {
-                        Text(
-                            text = "Delete",
-                            color = Color(0xFFE53935),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { taskToDelete = null }) {
-                        Text(
-                            text = "Cancel",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                },
-                shape = RoundedCornerShape(18.dp),
-                containerColor = MaterialTheme.colorScheme.surface
-            )
         }
     }
 }

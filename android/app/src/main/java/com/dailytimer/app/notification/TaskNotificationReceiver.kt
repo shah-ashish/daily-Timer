@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -21,7 +20,7 @@ class TaskNotificationReceiver : BroadcastReceiver() {
         const val CHANNEL_NAME = "Task Reminders"
         const val ACTION_TRIGGER_NOTIFICATION = "com.dailytimer.app.ACTION_TRIGGER_NOTIFICATION"
         const val ACTION_MARK_COMPLETE = "com.dailytimer.app.ACTION_MARK_COMPLETE"
-        const val CORAL_PRIMARY_INT = 0xFFFF5722.toInt()
+        const val DARK_ORANGE_INT = 0xFFE65100.toInt() // Dark Orange background
 
         fun createNotificationChannel(context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -33,7 +32,7 @@ class TaskNotificationReceiver : BroadcastReceiver() {
                 ).apply {
                     description = "Exact reminders for upcoming tasks"
                     enableLights(true)
-                    lightColor = CORAL_PRIMARY_INT
+                    lightColor = DARK_ORANGE_INT
                     enableVibration(true)
                     vibrationPattern = longArrayOf(0, 300, 200, 300)
                     lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
@@ -107,16 +106,11 @@ class TaskNotificationReceiver : BroadcastReceiver() {
         val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         val contentText = if (startTime.isNotBlank()) "Starts at $startTime (in $leadMins minutes)" else "Starts in $leadMins minutes"
 
-        // App logo for rich notification display
-        val appLogoBitmap = try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.app_logo)
-        } catch (_: Exception) {
-            null
-        }
-
+        // Build notification with Dark Orange background and no logo/icon
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setColor(CORAL_PRIMARY_INT) // Electric Coral
+            .setSmallIcon(R.drawable.ic_notification) // 100% transparent vector: no icon or logo shown
+            .setColor(DARK_ORANGE_INT) // Dark Orange
+            .setColorized(true) // Gives full dark orange background to the notification card
             .setContentTitle("Upcoming: $taskName")
             .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -128,10 +122,6 @@ class TaskNotificationReceiver : BroadcastReceiver() {
             .setContentIntent(openPendingIntent)
             .addAction(0, "Open Task", openPendingIntent)
             .addAction(0, "Mark Complete", markCompletePendingIntent)
-
-        if (appLogoBitmap != null) {
-            builder.setLargeIcon(appLogoBitmap)
-        }
 
         if (description.isNotBlank()) {
             builder.setStyle(

@@ -1,7 +1,7 @@
 {
-  "versionCode": 5,
-  "versionName": "1.0.4",
+  "versionCode": 6,
+  "versionName": "1.0.5",
   "minSdk": 26,
-  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.4/app-release.apk",
-  "releaseNotes": "v1.0.4: Display app logo in notifications, reliable background alarms with Doze fallback, pre-registered notification channel, and custom reminder lead time."
+  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.5/app-release.apk",
+  "releaseNotes": "v1.0.5: Added End Time support, strict time order validation, dark orange colorized notifications with no icon/logo, and In Progress focus hero card."
 }

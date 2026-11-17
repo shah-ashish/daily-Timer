@@ -48,11 +48,12 @@ fun CreateTaskScreen(
     val dbHelper = remember { TaskDatabaseHelper(context) }
     val calendar = remember { Calendar.getInstance() }
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
-    val timeFormat = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
+    val timeFormat = remember { SimpleDateFormat("hh:mm a", Locale.US) }
 
     var selectedMode by remember { mutableStateOf(CreateMode.NEW_TASK) }
     var taskDate by remember { mutableStateOf(dateFormat.format(calendar.time)) }
     var startTime by remember { mutableStateOf("09:30 AM") }
+    var endTime by remember { mutableStateOf("10:30 AM") }
     var taskName by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -97,8 +98,8 @@ fun CreateTaskScreen(
         )
     }
 
-    // Time picker dialog
-    val timePickerDialog = remember {
+    // Start time picker dialog
+    val startTimePickerDialog = remember {
         TimePickerDialog(
             context,
             { _, hourOfDay, minute ->
@@ -106,12 +107,68 @@ fun CreateTaskScreen(
                     set(Calendar.HOUR_OF_DAY, hourOfDay)
                     set(Calendar.MINUTE, minute)
                 }
-                startTime = timeFormat.format(chosenTime.time)
+                val newStart = timeFormat.format(chosenTime.time)
+                startTime = newStart
+                errorMessage = null
+
+                val targetDate = if (selectedMode == CreateMode.NEW_TASK) taskDate else selectedExistingDate.ifBlank { taskDate }
+                val sMillis = parseTimeToMillis(targetDate, newStart)
+                val eMillis = parseTimeToMillis(targetDate, endTime)
+                if (sMillis != 0L && (eMillis == 0L || eMillis <= sMillis)) {
+                    val autoEnd = Calendar.getInstance().apply {
+                        timeInMillis = sMillis + 60 * 60 * 1000L
+                    }
+                    endTime = timeFormat.format(autoEnd.time)
+                }
             },
             9,
             30,
             false
         )
+    }
+
+    // End time picker dialog
+    val endTimePickerDialog = remember {
+        TimePickerDialog(
+            context,
+            { _, hourOfDay, minute ->
+                val chosenTime = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, hourOfDay)
+                    set(Calendar.MINUTE, minute)
+                }
+                val newEnd = timeFormat.format(chosenTime.time)
+                endTime = newEnd
+
+                val targetDate = if (selectedMode == CreateMode.NEW_TASK) taskDate else selectedExistingDate.ifBlank { taskDate }
+                val sMillis = parseTimeToMillis(targetDate, startTime)
+                val eMillis = parseTimeToMillis(targetDate, newEnd)
+                if (sMillis != 0L && eMillis != 0L && eMillis <= sMillis) {
+                    errorMessage = "End time cannot be before or equal to start time"
+                } else {
+                    errorMessage = null
+                }
+            },
+            10,
+            30,
+            false
+        )
+    }
+
+    fun parseTimeToMillis(dateStr: String, timeStr: String): Long {
+        val formats = listOf(
+            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.US),
+            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.getDefault()),
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US),
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+        )
+        for (f in formats) {
+            try {
+                f.isLenient = true
+                val parsed = f.parse("$dateStr ${timeStr.trim().replace("\u00A0", " ")}")
+                if (parsed != null) return parsed.time
+            } catch (_: Exception) {}
+        }
+        return 0L
     }
 
     Scaffold(
@@ -130,9 +187,9 @@ fun CreateTaskScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 20.dp)
         ) {
-            // Header
+            // Header: iOS Large Title
             Text(
-                text = "Create Task",
+                text = "New Task",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 32.sp
@@ -142,55 +199,45 @@ fun CreateTaskScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Mode Selector
-            Text(
-                text = "MODE",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.sp
-                ),
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-            )
-
+            // Mode Selector: Segmented Control
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface)
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
                     .padding(4.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (selectedMode == CreateMode.NEW_TASK) CoralPrimary else Color.Transparent)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (selectedMode == CreateMode.NEW_TASK) MaterialTheme.colorScheme.surface else Color.Transparent)
                         .clickable { selectedMode = CreateMode.NEW_TASK }
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Create New Task",
+                        text = "New Schedule",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (selectedMode == CreateMode.NEW_TASK) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = if (selectedMode == CreateMode.NEW_TASK) CoralPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
 
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (selectedMode == CreateMode.ADD_TO_EXISTING) CoralPrimary else Color.Transparent)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (selectedMode == CreateMode.ADD_TO_EXISTING) MaterialTheme.colorScheme.surface else Color.Transparent)
                         .clickable { selectedMode = CreateMode.ADD_TO_EXISTING }
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Add to Existing",
+                        text = "Add to Existing Date",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (selectedMode == CreateMode.ADD_TO_EXISTING) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = if (selectedMode == CreateMode.ADD_TO_EXISTING) CoralPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
             }
@@ -252,7 +299,7 @@ fun CreateTaskScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { timePickerDialog.show() }
+                                .clickable { startTimePickerDialog.show() }
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -274,7 +321,41 @@ fun CreateTaskScreen(
                                 )
                                 Icon(
                                     imageVector = Icons.Rounded.Schedule,
-                                    contentDescription = "Pick Time",
+                                    contentDescription = "Pick Start Time",
+                                    tint = CoralPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), thickness = 0.5.dp)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { endTimePickerDialog.show() }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "End Time",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = endTime,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = CoralPrimary
+                                )
+                                Icon(
+                                    imageVector = Icons.Rounded.Schedule,
+                                    contentDescription = "Pick End Time",
                                     tint = CoralPrimary,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -300,12 +381,18 @@ fun CreateTaskScreen(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
-                        Text(
-                            text = "No dates with tasks yet. Please switch to 'Create New Task' first.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            modifier = Modifier.padding(16.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No existing dates yet. Use 'New Schedule' to create your first task.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
                     }
                 } else {
                     Card(
@@ -315,70 +402,91 @@ fun CreateTaskScreen(
                     ) {
                         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                             Text(
-                                text = "Choose Scheduled Day:",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                text = "Select Date to Append:",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
 
-                            // Horizontal strip of existing dates
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                existingDates.forEach { (date, count) ->
-                                    val isSelected = date == selectedExistingDate
-                                    Box(
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                existingDates.forEach { (dateStr, count) ->
+                                    val isSelected = dateStr == selectedExistingDate
+                                    Row(
                                         modifier = Modifier
+                                            .fillMaxWidth()
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(if (isSelected) CoralPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                                            .background(
+                                                if (isSelected) CoralPrimary.copy(alpha = 0.12f)
+                                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.06f)
+                                            )
                                             .clickable {
-                                                selectedExistingDate = date
-                                                existingTasksPreview = dbHelper.getTasksForDate(date)
+                                                selectedExistingDate = dateStr
+                                                existingTasksPreview = dbHelper.getTasksForDate(dateStr)
                                             }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "$date ($count)",
-                                            fontSize = 12.sp,
+                                            text = dateStr,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                            color = if (isSelected) CoralPrimary else MaterialTheme.colorScheme.onSurface,
+                                            fontSize = 14.sp
                                         )
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(
+                                                    if (isSelected) CoralPrimary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                                )
+                                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "$count tasks",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
-                    // Existing timeline preview
                     if (existingTasksPreview.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "TIMELINE FOR $selectedExistingDate",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            text = "EXISTING TIMELINE PREVIEW",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.8.sp
+                            ),
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
                         )
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
                         ) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 existingTasksPreview.forEach { existing ->
+                                    val timeSpan = if (existing.endTime.isNotBlank()) "${existing.startTime} - ${existing.endTime}" else existing.startTime
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "${existing.startTime} — ${existing.taskName}",
+                                            text = "• ${existing.taskName}",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
-                                            text = existing.status,
-                                            fontSize = 10.sp,
+                                            text = timeSpan,
+                                            fontSize = 11.sp,
                                             color = CoralPrimary,
                                             fontWeight = FontWeight.SemiBold
                                         )
@@ -390,41 +498,77 @@ fun CreateTaskScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Start time picker for append
+                    // Start & End time pickers for append
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { timePickerDialog.show() }
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "New Slot Start Time",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { startTimePickerDialog.show() }
+                                    .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = startTime,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = CoralPrimary
+                                    text = "New Slot Start Time",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
-                                Icon(
-                                    imageVector = Icons.Rounded.Schedule,
-                                    contentDescription = "Pick Time",
-                                    tint = CoralPrimary,
-                                    modifier = Modifier.size(16.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = startTime,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = CoralPrimary
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Rounded.Schedule,
+                                        contentDescription = "Pick Start Time",
+                                        tint = CoralPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), thickness = 0.5.dp)
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { endTimePickerDialog.show() }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "New Slot End Time",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = endTime,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = CoralPrimary
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Rounded.Schedule,
+                                        contentDescription = "Pick End Time",
+                                        tint = CoralPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -449,52 +593,45 @@ fun CreateTaskScreen(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                    Text(
-                        text = "Task Name",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     OutlinedTextField(
                         value = taskName,
                         onValueChange = {
                             taskName = it
                             errorMessage = null
                         },
-                        placeholder = { Text("e.g., Deep Work Session", fontSize = 14.sp) },
-                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Task Name") },
+                        placeholder = { Text("e.g. Mathematics Revision") },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = "Description (Optional)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
                     OutlinedTextField(
                         value = description,
                         onValueChange = { description = it },
-                        placeholder = { Text("Add notes, agenda, or location...", fontSize = 14.sp) },
+                        label = { Text("Description (Optional)") },
+                        placeholder = { Text("Add specific notes, chapters, or goals...") },
+                        maxLines = 4,
                         modifier = Modifier.fillMaxWidth(),
-                        minLines = 3,
                         shape = RoundedCornerShape(12.dp)
                     )
                 }
             }
 
-            // Error / Success Feedback
+            // Message Alerts
             AnimatedVisibility(visible = errorMessage != null) {
                 errorMessage?.let {
                     Text(
                         text = it,
                         color = Color(0xFFE53935), // Pure Red
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 8.dp, start = 4.dp)
                     )
                 }
@@ -532,9 +669,17 @@ fun CreateTaskScreen(
                         selectedExistingDate
                     }
 
+                    val startMillis = parseTimeToMillis(finalDate, startTime)
+                    val endMillis = parseTimeToMillis(finalDate, endTime)
+                    if (startMillis != 0L && endMillis != 0L && endMillis <= startMillis) {
+                        errorMessage = "End time cannot be before or equal to start time"
+                        return@Button
+                    }
+
                     val newTask = Task(
                         date = finalDate,
                         startTime = startTime,
+                        endTime = endTime,
                         taskName = taskName.trim(),
                         description = description.trim(),
                         status = "UPCOMING"

@@ -14,12 +14,13 @@ class TaskDatabaseHelper(context: Context) : SQLiteOpenHelper(
 ) {
     companion object {
         private const val DATABASE_NAME = "dailytimer.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
 
         const val TABLE_TASKS = "tasks"
         const val COLUMN_ID = "id"
         const val COLUMN_DATE = "date"
         const val COLUMN_START_TIME = "start_time"
+        const val COLUMN_END_TIME = "end_time"
         const val COLUMN_TASK_NAME = "task_name"
         const val COLUMN_DESCRIPTION = "description"
         const val COLUMN_STATUS = "status"
@@ -31,6 +32,7 @@ class TaskDatabaseHelper(context: Context) : SQLiteOpenHelper(
                 $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
                 $COLUMN_DATE TEXT NOT NULL,
                 $COLUMN_START_TIME TEXT NOT NULL,
+                $COLUMN_END_TIME TEXT NOT NULL DEFAULT '',
                 $COLUMN_TASK_NAME TEXT NOT NULL,
                 $COLUMN_DESCRIPTION TEXT,
                 $COLUMN_STATUS TEXT NOT NULL DEFAULT 'UPCOMING'
@@ -41,8 +43,13 @@ class TaskDatabaseHelper(context: Context) : SQLiteOpenHelper(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_TASKS")
-        onCreate(db)
+        if (oldVersion < 2) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_TASKS ADD COLUMN $COLUMN_END_TIME TEXT NOT NULL DEFAULT ''")
+            } catch (_: Exception) {
+                // Column might already exist if re-run
+            }
+        }
     }
 
     fun insertTask(task: Task): Long {
@@ -50,6 +57,7 @@ class TaskDatabaseHelper(context: Context) : SQLiteOpenHelper(
         val values = ContentValues().apply {
             put(COLUMN_DATE, task.date)
             put(COLUMN_START_TIME, task.startTime)
+            put(COLUMN_END_TIME, task.endTime)
             put(COLUMN_TASK_NAME, task.taskName)
             put(COLUMN_DESCRIPTION, task.description)
             put(COLUMN_STATUS, task.status)
@@ -72,14 +80,24 @@ class TaskDatabaseHelper(context: Context) : SQLiteOpenHelper(
 
         cursor.use {
             if (it.moveToFirst()) {
+                val idIdx = it.getColumnIndexOrThrow(COLUMN_ID)
+                val dateIdx = it.getColumnIndexOrThrow(COLUMN_DATE)
+                val startIdx = it.getColumnIndexOrThrow(COLUMN_START_TIME)
+                val endIdx = it.getColumnIndex(COLUMN_END_TIME)
+                val nameIdx = it.getColumnIndexOrThrow(COLUMN_TASK_NAME)
+                val descIdx = it.getColumnIndexOrThrow(COLUMN_DESCRIPTION)
+                val statusIdx = it.getColumnIndexOrThrow(COLUMN_STATUS)
+
                 do {
+                    val endTimeVal = if (endIdx >= 0 && !it.isNull(endIdx)) it.getString(endIdx) else ""
                     val task = Task(
-                        id = it.getLong(it.getColumnIndexOrThrow(COLUMN_ID)),
-                        date = it.getString(it.getColumnIndexOrThrow(COLUMN_DATE)),
-                        startTime = it.getString(it.getColumnIndexOrThrow(COLUMN_START_TIME)),
-                        taskName = it.getString(it.getColumnIndexOrThrow(COLUMN_TASK_NAME)),
-                        description = it.getString(it.getColumnIndexOrThrow(COLUMN_DESCRIPTION)) ?: "",
-                        status = it.getString(it.getColumnIndexOrThrow(COLUMN_STATUS))
+                        id = it.getLong(idIdx),
+                        date = it.getString(dateIdx),
+                        startTime = it.getString(startIdx),
+                        endTime = endTimeVal,
+                        taskName = it.getString(nameIdx),
+                        description = it.getString(descIdx) ?: "",
+                        status = it.getString(statusIdx)
                     )
                     tasks.add(task)
                 } while (it.moveToNext())
@@ -121,6 +139,7 @@ class TaskDatabaseHelper(context: Context) : SQLiteOpenHelper(
         val values = ContentValues().apply {
             put(COLUMN_DATE, task.date)
             put(COLUMN_START_TIME, task.startTime)
+            put(COLUMN_END_TIME, task.endTime)
             put(COLUMN_TASK_NAME, task.taskName)
             put(COLUMN_DESCRIPTION, task.description)
             put(COLUMN_STATUS, task.status)
@@ -150,14 +169,24 @@ class TaskDatabaseHelper(context: Context) : SQLiteOpenHelper(
         )
         cursor.use {
             if (it.moveToFirst()) {
+                val idIdx = it.getColumnIndexOrThrow(COLUMN_ID)
+                val dateIdx = it.getColumnIndexOrThrow(COLUMN_DATE)
+                val startIdx = it.getColumnIndexOrThrow(COLUMN_START_TIME)
+                val endIdx = it.getColumnIndex(COLUMN_END_TIME)
+                val nameIdx = it.getColumnIndexOrThrow(COLUMN_TASK_NAME)
+                val descIdx = it.getColumnIndexOrThrow(COLUMN_DESCRIPTION)
+                val statusIdx = it.getColumnIndexOrThrow(COLUMN_STATUS)
+
                 do {
+                    val endTimeVal = if (endIdx >= 0 && !it.isNull(endIdx)) it.getString(endIdx) else ""
                     val task = Task(
-                        id = it.getLong(it.getColumnIndexOrThrow(COLUMN_ID)),
-                        date = it.getString(it.getColumnIndexOrThrow(COLUMN_DATE)),
-                        startTime = it.getString(it.getColumnIndexOrThrow(COLUMN_START_TIME)),
-                        taskName = it.getString(it.getColumnIndexOrThrow(COLUMN_TASK_NAME)),
-                        description = it.getString(it.getColumnIndexOrThrow(COLUMN_DESCRIPTION)) ?: "",
-                        status = it.getString(it.getColumnIndexOrThrow(COLUMN_STATUS))
+                        id = it.getLong(idIdx),
+                        date = it.getString(dateIdx),
+                        startTime = it.getString(startIdx),
+                        endTime = endTimeVal,
+                        taskName = it.getString(nameIdx),
+                        description = it.getString(descIdx) ?: "",
+                        status = it.getString(statusIdx)
                     )
                     tasks.add(task)
                 } while (it.moveToNext())

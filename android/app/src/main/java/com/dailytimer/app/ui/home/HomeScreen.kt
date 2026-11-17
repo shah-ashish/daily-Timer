@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -54,9 +55,52 @@ fun HomeScreen(
         todayTasks = dbHelper.getTasksForDate(todayDateStr)
     }
 
-    // Split tasks into active/upcoming and others
-    val currentOrNextTask = todayTasks.firstOrNull { it.status != "COMPLETED" } ?: todayTasks.firstOrNull()
-    val upcomingTasks = todayTasks.filter { it != currentOrNextTask }
+    fun parseTimeToMillis(dateStr: String, timeStr: String): Long {
+        val formats = listOf(
+            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.US),
+            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.getDefault()),
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US),
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+        )
+        for (f in formats) {
+            try {
+                f.isLenient = true
+                val parsed = f.parse("$dateStr ${timeStr.trim().replace("\u00A0", " ")}")
+                if (parsed != null) return parsed.time
+            } catch (_: Exception) {}
+        }
+        return 0L
+    }
+
+    fun getRuntimeStatus(task: Task): String {
+        if (task.status == "COMPLETED") return "COMPLETED"
+        val now = System.currentTimeMillis()
+        val startMillis = parseTimeToMillis(task.date, task.startTime)
+        val endMillis = if (task.endTime.isNotBlank()) parseTimeToMillis(task.date, task.endTime) else 0L
+
+        if (startMillis == 0L) return task.status
+
+        return when {
+            endMillis > startMillis && now in startMillis..endMillis -> "IN_PROGRESS"
+            endMillis > 0L && now > endMillis -> "IN_PROGRESS" // Ongoing until user completes
+            now >= startMillis && endMillis == 0L -> "IN_PROGRESS"
+            else -> "UPCOMING"
+        }
+    }
+
+    // Determine the hero Focus task:
+    // Priority 1: Task currently IN_PROGRESS
+    // Priority 2: Next UPCOMING task
+    // Priority 3: Fallback to first task if all completed
+    val currentFocusTask = remember(todayTasks) {
+        todayTasks.firstOrNull { getRuntimeStatus(it) == "IN_PROGRESS" }
+            ?: todayTasks.firstOrNull { getRuntimeStatus(it) == "UPCOMING" }
+            ?: todayTasks.firstOrNull()
+    }
+
+    val otherTasks = remember(todayTasks, currentFocusTask) {
+        todayTasks.filter { it != currentFocusTask }
+    }
 
     Scaffold(
         bottomBar = {
@@ -124,15 +168,19 @@ fun HomeScreen(
                 modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
             )
 
-            if (currentOrNextTask != null) {
+            if (currentFocusTask != null) {
+                val heroStatus = getRuntimeStatus(currentFocusTask)
+                val isInProgress = heroStatus == "IN_PROGRESS"
+                val isCompleted = heroStatus == "COMPLETED"
+
                 // Hero Task Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
+                        containerColor = if (isInProgress) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surface
                     ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    elevation = CardDefaults.cardElevation(defaultElevation = if (isInProgress) 3.dp else 1.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -145,36 +193,61 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "CURRENT / UPCOMING",
+                                text = if (isInProgress) "CURRENT FOCUS (LIVE)" else if (isCompleted) "FOCUS COMPLETED" else "NEXT FOCUS",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.5.sp
                                 ),
-                                color = CoralPrimary
+                                color = if (isInProgress) CoralPrimary else if (isCompleted) EmeraldSuccess else CoralPrimary.copy(alpha = 0.8f)
                             )
 
+                            // Status Badge
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(
-                                        if (currentOrNextTask.status == "COMPLETED") EmeraldSuccess.copy(alpha = 0.15f)
-                                        else CoralPrimary.copy(alpha = 0.15f)
+                                        when {
+                                            isInProgress -> CoralPrimary
+                                            isCompleted -> EmeraldSuccess.copy(alpha = 0.15f)
+                                            else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                                        }
                                     )
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Text(
-                                    text = currentOrNextTask.status,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (currentOrNextTask.status == "COMPLETED") EmeraldSuccess else CoralPrimary
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    if (isInProgress) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.PlayArrow,
+                                            contentDescription = "Active",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = when {
+                                            isInProgress -> "IN PROGRESS"
+                                            isCompleted -> "COMPLETED"
+                                            else -> "UPCOMING"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = when {
+                                            isInProgress -> Color.White
+                                            isCompleted -> EmeraldSuccess
+                                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                        }
+                                    )
+                                }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
-                            text = currentOrNextTask.taskName,
+                            text = currentFocusTask.taskName,
                             style = MaterialTheme.typography.headlineSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 22.sp
@@ -182,7 +255,14 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Time Range display
+                        val timeSpan = if (currentFocusTask.endTime.isNotBlank()) {
+                            "${currentFocusTask.startTime}  –  ${currentFocusTask.endTime}"
+                        } else {
+                            currentFocusTask.startTime
+                        }
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -191,21 +271,21 @@ fun HomeScreen(
                             Icon(
                                 imageVector = Icons.Rounded.Schedule,
                                 contentDescription = "Time",
-                                tint = CoralPrimary,
+                                tint = if (isInProgress) CoralPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = currentOrNextTask.startTime,
+                                text = timeSpan,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = CoralPrimary
+                                color = if (isInProgress) CoralPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
                         }
 
-                        if (currentOrNextTask.description.isNotBlank()) {
+                        if (currentFocusTask.description.isNotBlank()) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = currentOrNextTask.description,
+                                text = currentFocusTask.description,
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontSize = 13.sp,
                                     lineHeight = 18.sp
@@ -271,11 +351,11 @@ fun HomeScreen(
             }
 
             // Section: Next Up Today
-            if (upcomingTasks.isNotEmpty()) {
+            if (otherTasks.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "NEXT UP TODAY",
+                    text = "MORE TASKS TODAY",
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = 1.sp
@@ -290,7 +370,17 @@ fun HomeScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        upcomingTasks.forEachIndexed { index, task ->
+                        otherTasks.forEachIndexed { index, task ->
+                            val taskRuntimeStatus = getRuntimeStatus(task)
+                            val isItemInProgress = taskRuntimeStatus == "IN_PROGRESS"
+                            val isItemCompleted = taskRuntimeStatus == "COMPLETED"
+
+                            val itemTimeSpan = if (task.endTime.isNotBlank()) {
+                                "${task.startTime} – ${task.endTime}"
+                            } else {
+                                task.startTime
+                            }
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -299,6 +389,7 @@ fun HomeScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Row(
+                                    modifier = Modifier.weight(1f),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
@@ -306,13 +397,17 @@ fun HomeScreen(
                                         modifier = Modifier
                                             .size(36.dp)
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(CoralPrimary.copy(alpha = 0.1f)),
+                                            .background(
+                                                if (isItemInProgress) CoralPrimary.copy(alpha = 0.15f)
+                                                else if (isItemCompleted) EmeraldSuccess.copy(alpha = 0.15f)
+                                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                                            ),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Rounded.Schedule,
+                                            imageVector = if (isItemCompleted) Icons.Rounded.CheckCircle else Icons.Rounded.Schedule,
                                             contentDescription = "Time",
-                                            tint = CoralPrimary,
+                                            tint = if (isItemInProgress) CoralPrimary else if (isItemCompleted) EmeraldSuccess else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
@@ -324,10 +419,10 @@ fun HomeScreen(
                                                 fontWeight = FontWeight.SemiBold,
                                                 fontSize = 15.sp
                                             ),
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            color = if (isItemCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
-                                            text = task.startTime,
+                                            text = itemTimeSpan,
                                             style = MaterialTheme.typography.bodySmall.copy(
                                                 fontSize = 12.sp
                                             ),
@@ -339,19 +434,33 @@ fun HomeScreen(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                                        .background(
+                                            when {
+                                                isItemInProgress -> CoralPrimary.copy(alpha = 0.15f)
+                                                isItemCompleted -> EmeraldSuccess.copy(alpha = 0.15f)
+                                                else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
+                                            }
+                                        )
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Text(
-                                        text = task.status,
+                                        text = when {
+                                            isItemInProgress -> "IN PROGRESS"
+                                            isItemCompleted -> "COMPLETED"
+                                            else -> "UPCOMING"
+                                        },
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                        color = when {
+                                            isItemInProgress -> CoralPrimary
+                                            isItemCompleted -> EmeraldSuccess
+                                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                        }
                                     )
                                 }
                             }
 
-                            if (index < upcomingTasks.lastIndex) {
+                            if (index < otherTasks.lastIndex) {
                                 Divider(
                                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
                                     thickness = 0.5.dp,
