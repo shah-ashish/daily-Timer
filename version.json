@@ -1,0 +1,7 @@
+{
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "minSdk": 26,
+  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.0/app-release.apk",
+  "releaseNotes": "Initial release: Settings and In-App Update Engine."
+}
