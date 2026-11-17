@@ -37,6 +37,23 @@ enum class CreateMode {
     ADD_TO_EXISTING
 }
 
+private fun parseTimeToMillis(dateStr: String, timeStr: String): Long {
+    val formats = listOf(
+        SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.US),
+        SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.getDefault()),
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US),
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    )
+    for (f in formats) {
+        try {
+            f.isLenient = true
+            val parsed = f.parse("$dateStr ${timeStr.trim().replace("\u00A0", " ")}")
+            if (parsed != null) return parsed.time
+        } catch (_: Exception) {}
+    }
+    return 0L
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateTaskScreen(
@@ -152,23 +169,6 @@ fun CreateTaskScreen(
             30,
             false
         )
-    }
-
-    fun parseTimeToMillis(dateStr: String, timeStr: String): Long {
-        val formats = listOf(
-            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.US),
-            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.getDefault()),
-            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US),
-            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-        )
-        for (f in formats) {
-            try {
-                f.isLenient = true
-                val parsed = f.parse("$dateStr ${timeStr.trim().replace("\u00A0", " ")}")
-                if (parsed != null) return parsed.time
-            } catch (_: Exception) {}
-        }
-        return 0L
     }
 
     Scaffold(

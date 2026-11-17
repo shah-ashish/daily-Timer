@@ -1,7 +1,7 @@
 {
-  "versionCode": 6,
-  "versionName": "1.0.5",
+  "versionCode": 7,
+  "versionName": "1.0.6",
   "minSdk": 26,
-  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.5/app-release.apk",
-  "releaseNotes": "v1.0.5: Added End Time support, strict time order validation, dark orange colorized notifications with no icon/logo, and In Progress focus hero card."
+  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.6/app-release.apk",
+  "releaseNotes": "v1.0.6: Fix compile scope in CreateTaskScreen, End Time support, strict validation, dark orange colorized notifications with no icon/logo, and In Progress focus card."
 }
