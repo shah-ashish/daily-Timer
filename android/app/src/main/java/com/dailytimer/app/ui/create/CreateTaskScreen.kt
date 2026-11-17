@@ -27,6 +27,7 @@ import com.dailytimer.app.data.model.Task
 import com.dailytimer.app.ui.navigation.BottomNavBar
 import com.dailytimer.app.ui.navigation.NavTab
 import com.dailytimer.app.ui.theme.CoralPrimary
+import com.dailytimer.app.ui.theme.EmeraldSuccess
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -490,9 +491,9 @@ fun CreateTaskScreen(
                 errorMessage?.let {
                     Text(
                         text = it,
-                        color = MaterialTheme.colorScheme.error,
+                        color = Color(0xFFE53935), // Pure Red
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 8.dp, start = 4.dp)
                     )
                 }
@@ -502,7 +503,7 @@ fun CreateTaskScreen(
                 successMessage?.let {
                     Text(
                         text = it,
-                        color = CoralPrimary,
+                        color = EmeraldSuccess, // Pure Green
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 8.dp, start = 4.dp)

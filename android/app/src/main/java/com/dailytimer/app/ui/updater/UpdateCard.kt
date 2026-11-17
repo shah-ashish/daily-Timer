@@ -313,8 +313,8 @@ fun UpdateCard(
                     Text(
                         text = it.reason,
                         fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Medium
+                        color = Color(0xFFE53935), // Pure Red
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }

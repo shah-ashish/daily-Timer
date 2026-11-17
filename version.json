@@ -1,7 +1,7 @@
 {
-  "versionCode": 2,
-  "versionName": "1.0.1",
+  "versionCode": 3,
+  "versionName": "1.0.2",
   "minSdk": 26,
-  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.1/app-release.apk",
-  "releaseNotes": "v1.0.1: Added official App Logo/Icon, streamlined Reminder settings, and implemented Step 2 Create Task (New Task & Append to Existing) with SQLite."
+  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.2/app-release.apk",
+  "releaseNotes": "v1.0.2: Implemented Home Screen and Tasks Screen with full SQLite integration, single date selector, editable reminder duration, and CI/CD cache permissions."
 }

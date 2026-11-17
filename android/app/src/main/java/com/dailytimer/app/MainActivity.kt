@@ -6,8 +6,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import com.dailytimer.app.ui.create.CreateTaskScreen
+import com.dailytimer.app.ui.home.HomeScreen
 import com.dailytimer.app.ui.navigation.NavTab
 import com.dailytimer.app.ui.settings.SettingsScreen
+import com.dailytimer.app.ui.tasks.TasksScreen
 import com.dailytimer.app.ui.theme.DailyTimerTheme
 
 class MainActivity : ComponentActivity() {
@@ -18,29 +20,36 @@ class MainActivity : ComponentActivity() {
         setContent {
             val systemDark = isSystemInDarkTheme()
             var isDarkMode by remember { mutableStateOf(systemDark) }
-            var currentTab by remember { mutableStateOf(NavTab.SETTINGS) }
+            var currentTab by remember { mutableStateOf(NavTab.HOME) }
 
             DailyTimerTheme(darkTheme = isDarkMode) {
                 when (currentTab) {
+                    NavTab.HOME -> {
+                        HomeScreen(
+                            selectedTab = currentTab,
+                            onTabSelected = { currentTab = it },
+                            onCreateTaskClick = { currentTab = NavTab.CREATE }
+                        )
+                    }
+                    NavTab.TASKS -> {
+                        TasksScreen(
+                            selectedTab = currentTab,
+                            onTabSelected = { currentTab = it },
+                            onAddTaskForDate = { _ ->
+                                currentTab = NavTab.CREATE
+                            }
+                        )
+                    }
                     NavTab.CREATE -> {
                         CreateTaskScreen(
                             selectedTab = currentTab,
                             onTabSelected = { currentTab = it },
                             onTaskCreated = {
-                                // Task saved successfully into SQLite
+                                currentTab = NavTab.TASKS
                             }
                         )
                     }
                     NavTab.SETTINGS -> {
-                        SettingsScreen(
-                            isDarkMode = isDarkMode,
-                            onThemeToggle = { isDarkMode = it },
-                            selectedTab = currentTab,
-                            onTabSelected = { currentTab = it }
-                        )
-                    }
-                    else -> {
-                        // For Home / Tasks tabs, fallback gracefully to Settings for now
                         SettingsScreen(
                             isDarkMode = isDarkMode,
                             onThemeToggle = { isDarkMode = it },
