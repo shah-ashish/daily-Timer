@@ -1,6 +1,7 @@
 package com.dailytimer.app.ui.updater
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -16,9 +17,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dailytimer.app.R
 import com.dailytimer.app.ui.theme.CoralGradientEnd
 import com.dailytimer.app.ui.theme.CoralPrimary
 import com.dailytimer.app.ui.theme.EmeraldSuccess
@@ -71,22 +74,13 @@ fun UpdateCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Box(
+                    Image(
+                        painter = painterResource(id = R.drawable.app_logo),
+                        contentDescription = "Daily Timer Logo",
                         modifier = Modifier
                             .size(46.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                Brush.linearGradient(listOf(CoralPrimary, CoralGradientEnd))
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Schedule,
-                            contentDescription = "App Icon",
-                            tint = Color.White,
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
+                    )
 
                     Column {
                         Text(

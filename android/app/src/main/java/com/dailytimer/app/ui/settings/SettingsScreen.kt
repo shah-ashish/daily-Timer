@@ -193,7 +193,7 @@ fun SettingsScreen(
                             }
                             Column {
                                 Text(
-                                    text = "Reminder Lead Time",
+                                    text = "Reminder",
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 15.sp
@@ -201,11 +201,12 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Alert before task start",
+                                    text = "$notificationLeadMins min before task",
                                     style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 11.sp
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
                                     ),
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                                 )
                             }
                         }
