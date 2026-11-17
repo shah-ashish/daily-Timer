@@ -1,7 +1,7 @@
 {
-  "versionCode": 7,
-  "versionName": "1.0.6",
+  "versionCode": 8,
+  "versionName": "1.0.7",
   "minSdk": 26,
-  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.6/app-release.apk",
-  "releaseNotes": "v1.0.6: Fix compile scope in CreateTaskScreen, End Time support, strict validation, dark orange colorized notifications with no icon/logo, and In Progress focus card."
+  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.7/app-release.apk",
+  "releaseNotes": "v1.0.7: Fix in-app package installer permissions, external storage staging, and query declarations for all Android versions."
 }
