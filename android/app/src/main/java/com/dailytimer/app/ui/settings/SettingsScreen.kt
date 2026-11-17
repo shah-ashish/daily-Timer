@@ -17,11 +17,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dailytimer.app.data.preferences.SettingsPreferences
+import com.dailytimer.app.notification.NotificationScheduler
 import com.dailytimer.app.ui.navigation.BottomNavBar
 import com.dailytimer.app.ui.navigation.NavTab
 import com.dailytimer.app.ui.theme.CoralPrimary
@@ -34,7 +37,10 @@ fun SettingsScreen(
     selectedTab: NavTab = NavTab.SETTINGS,
     onTabSelected: (NavTab) -> Unit = {}
 ) {
-    var notificationLeadMinsText by remember { mutableStateOf("10") }
+    val context = LocalContext.current
+    var notificationLeadMinsText by remember { 
+        mutableStateOf(SettingsPreferences.getReminderLeadMinutes(context).toString()) 
+    }
 
     Scaffold(
         bottomBar = {
@@ -214,6 +220,11 @@ fun SettingsScreen(
                                 onValueChange = { newValue ->
                                     if (newValue.length <= 3 && newValue.all { it.isDigit() }) {
                                         notificationLeadMinsText = newValue
+                                        val mins = newValue.toIntOrNull()
+                                        if (mins != null && mins > 0) {
+                                            SettingsPreferences.setReminderLeadMinutes(context, mins)
+                                            NotificationScheduler.rescheduleAll(context, mins)
+                                        }
                                     }
                                 },
                                 modifier = Modifier

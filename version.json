@@ -1,7 +1,7 @@
 {
-  "versionCode": 4,
-  "versionName": "1.0.3",
+  "versionCode": 5,
+  "versionName": "1.0.4",
   "minSdk": 26,
-  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.3/app-release.apk",
-  "releaseNotes": "v1.0.3: Added exact background notification engine (AlarmManager & BootReceiver), delete confirmation dialog, and enlarged adjustable logo."
+  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.4/app-release.apk",
+  "releaseNotes": "v1.0.4: Display app logo in notifications, reliable background alarms with Doze fallback, pre-registered notification channel, and custom reminder lead time."
 }
