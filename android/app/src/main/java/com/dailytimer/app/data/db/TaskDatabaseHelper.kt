@@ -127,4 +127,42 @@ class TaskDatabaseHelper(context: Context) : SQLiteOpenHelper(
         }
         return db.update(TABLE_TASKS, values, "$COLUMN_ID = ?", arrayOf(task.id.toString()))
     }
+
+    fun markTaskCompleted(id: Long): Int {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COLUMN_STATUS, "COMPLETED")
+        }
+        return db.update(TABLE_TASKS, values, "$COLUMN_ID = ?", arrayOf(id.toString()))
+    }
+
+    fun getAllUpcomingTasks(): List<Task> {
+        val tasks = mutableListOf<Task>()
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_TASKS,
+            null,
+            "$COLUMN_STATUS != ?",
+            arrayOf("COMPLETED"),
+            null,
+            null,
+            "$COLUMN_DATE ASC, $COLUMN_START_TIME ASC"
+        )
+        cursor.use {
+            if (it.moveToFirst()) {
+                do {
+                    val task = Task(
+                        id = it.getLong(it.getColumnIndexOrThrow(COLUMN_ID)),
+                        date = it.getString(it.getColumnIndexOrThrow(COLUMN_DATE)),
+                        startTime = it.getString(it.getColumnIndexOrThrow(COLUMN_START_TIME)),
+                        taskName = it.getString(it.getColumnIndexOrThrow(COLUMN_TASK_NAME)),
+                        description = it.getString(it.getColumnIndexOrThrow(COLUMN_DESCRIPTION)) ?: "",
+                        status = it.getString(it.getColumnIndexOrThrow(COLUMN_STATUS))
+                    )
+                    tasks.add(task)
+                } while (it.moveToNext())
+            }
+        }
+        return tasks
+    }
 }

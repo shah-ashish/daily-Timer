@@ -1,7 +1,7 @@
 {
-  "versionCode": 3,
-  "versionName": "1.0.2",
+  "versionCode": 4,
+  "versionName": "1.0.3",
   "minSdk": 26,
-  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.2/app-release.apk",
-  "releaseNotes": "v1.0.2: Implemented Home Screen and Tasks Screen with full SQLite integration, single date selector, editable reminder duration, and CI/CD cache permissions."
+  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.3/app-release.apk",
+  "releaseNotes": "v1.0.3: Added exact background notification engine (AlarmManager & BootReceiver), delete confirmation dialog, and enlarged adjustable logo."
 }

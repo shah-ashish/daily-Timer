@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dailytimer.app.data.db.TaskDatabaseHelper
 import com.dailytimer.app.data.model.Task
+import com.dailytimer.app.notification.NotificationScheduler
 import com.dailytimer.app.ui.navigation.BottomNavBar
 import com.dailytimer.app.ui.navigation.NavTab
 import com.dailytimer.app.ui.theme.CoralPrimary
@@ -48,6 +49,7 @@ fun TasksScreen(
     var selectedDateDb by remember { mutableStateOf(dateFormatDb.format(calendar.time)) }
     var selectedDateDisplay by remember { mutableStateOf(displayDateFormat.format(calendar.time)) }
     var tasksForDate by remember { mutableStateOf(listOf<Task>()) }
+    var taskToDelete by remember { mutableStateOf<Task?>(null) }
 
     fun refreshTasks() {
         tasksForDate = dbHelper.getTasksForDate(selectedDateDb)
@@ -236,7 +238,13 @@ fun TasksScreen(
                                     IconButton(
                                         onClick = {
                                             val newStatus = if (isCompleted) "UPCOMING" else "COMPLETED"
-                                            dbHelper.updateTask(task.copy(status = newStatus))
+                                            val updated = task.copy(status = newStatus)
+                                            dbHelper.updateTask(updated)
+                                            if (newStatus == "COMPLETED") {
+                                                NotificationScheduler.cancelTaskNotification(context, task.id)
+                                            } else {
+                                                NotificationScheduler.scheduleTaskNotification(context, updated)
+                                            }
                                             refreshTasks()
                                         },
                                         modifier = Modifier.size(24.dp)
@@ -293,16 +301,13 @@ fun TasksScreen(
 
                                 // Delete task button
                                 IconButton(
-                                    onClick = {
-                                        dbHelper.deleteTask(task.id)
-                                        refreshTasks()
-                                    },
+                                    onClick = { taskToDelete = task },
                                     modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Delete,
                                         contentDescription = "Delete",
-                                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
+                                        tint = Color(0xFFE53935).copy(alpha = 0.7f),
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -340,6 +345,54 @@ fun TasksScreen(
                     color = Color.White
                 )
             }
+        }
+
+        // Delete Confirmation Dialog
+        taskToDelete?.let { task ->
+            AlertDialog(
+                onDismissRequest = { taskToDelete = null },
+                title = {
+                    Text(
+                        text = "Delete Task",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Are you sure you want to delete \"${task.taskName}\"? This action cannot be undone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            NotificationScheduler.cancelTaskNotification(context, task.id)
+                            dbHelper.deleteTask(task.id)
+                            refreshTasks()
+                            taskToDelete = null
+                        }
+                    ) {
+                        Text(
+                            text = "Delete",
+                            color = Color(0xFFE53935),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { taskToDelete = null }) {
+                        Text(
+                            text = "Cancel",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = MaterialTheme.colorScheme.surface
+            )
         }
     }
 }

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dailytimer.app.data.db.TaskDatabaseHelper
 import com.dailytimer.app.data.model.Task
+import com.dailytimer.app.notification.NotificationScheduler
 import com.dailytimer.app.ui.navigation.BottomNavBar
 import com.dailytimer.app.ui.navigation.NavTab
 import com.dailytimer.app.ui.theme.CoralPrimary
@@ -541,6 +542,8 @@ fun CreateTaskScreen(
 
                     val rowId = dbHelper.insertTask(newTask)
                     if (rowId != -1L) {
+                        val created = newTask.copy(id = rowId)
+                        NotificationScheduler.scheduleTaskNotification(context, created)
                         successMessage = "Task created successfully for $finalDate!"
                         taskName = ""
                         description = ""

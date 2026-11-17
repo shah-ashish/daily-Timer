@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dailytimer.app.R
@@ -35,7 +36,8 @@ import java.util.*
 fun HomeScreen(
     selectedTab: NavTab = NavTab.HOME,
     onTabSelected: (NavTab) -> Unit = {},
-    onCreateTaskClick: () -> Unit = {}
+    onCreateTaskClick: () -> Unit = {},
+    logoSize: Dp = 54.dp
 ) {
     val context = LocalContext.current
     val dbHelper = remember { TaskDatabaseHelper(context) }
@@ -80,20 +82,20 @@ fun HomeScreen(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.app_logo),
                         contentDescription = "App Logo",
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .size(logoSize)
+                            .clip(RoundedCornerShape(14.dp))
                     )
                     Text(
                         text = "Daily Timer",
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
+                            fontSize = 20.sp
                         ),
                         color = MaterialTheme.colorScheme.onBackground
                     )
