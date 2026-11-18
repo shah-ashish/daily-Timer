@@ -150,7 +150,7 @@ fun UpdateCard(
                             onClick = {
                                 activeDownloadJob?.cancel()
                                 activeDownloadJob = scope.launch {
-                                    appUpdater.downloadApkFlow(status.payload.downloadUrl).collect { downloadState ->
+                                    appUpdater.downloadApkFlow(status.payload).collect { downloadState ->
                                         updateStatus = downloadState
                                         if (downloadState is UpdateStatus.ReadyToInstall) {
                                             downloadedApk = downloadState.apkFile

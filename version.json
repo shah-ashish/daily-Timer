@@ -1,7 +1,8 @@
 {
-  "versionCode": 8,
-  "versionName": "1.0.7",
+  "versionCode": 9,
+  "versionName": "1.0.8",
   "minSdk": 26,
-  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.7/app-release.apk",
-  "releaseNotes": "v1.0.7: Fix in-app package installer permissions, external storage staging, and query declarations for all Android versions."
+  "downloadUrl": "https://github.com/shah-ashish/daily-Timer/releases/download/v1.0.8/app-release.apk",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "releaseNotes": "v1.0.8: Stability and security release: start_millis database index and migration, real-time focus countdown ticker, exact reminder alarm scheduling, SHA-256 updater cryptographic integrity check, secure keystore handling, and automated unit tests."
 }

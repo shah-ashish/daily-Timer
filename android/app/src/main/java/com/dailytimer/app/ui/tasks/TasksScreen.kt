@@ -26,86 +26,71 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dailytimer.app.data.db.TaskDatabaseHelper
 import com.dailytimer.app.data.model.Task
+import com.dailytimer.app.data.model.TaskStatus
+import com.dailytimer.app.domain.TaskPhase
+import com.dailytimer.app.domain.TaskPhaseResolver
+import com.dailytimer.app.domain.TaskTime
 import com.dailytimer.app.notification.NotificationScheduler
 import com.dailytimer.app.ui.navigation.BottomNavBar
 import com.dailytimer.app.ui.navigation.NavTab
 import com.dailytimer.app.ui.theme.CoralPrimary
 import com.dailytimer.app.ui.theme.EmeraldSuccess
-import java.text.SimpleDateFormat
-import java.util.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+@Composable
+private fun rememberNowMillis(refreshIntervalMs: Long = 30_000L): State<Long> =
+    produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            delay(refreshIntervalMs)
+            value = System.currentTimeMillis()
+        }
+    }
 
 @Composable
 fun TasksScreen(
     selectedTab: NavTab = NavTab.TASKS,
     onTabSelected: (NavTab) -> Unit = {},
+    initialDate: String? = null,
     onAddTaskForDate: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val dbHelper = remember { TaskDatabaseHelper(context) }
-    val calendar = remember { Calendar.getInstance() }
-    val dateFormatDb = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
-    val displayDateFormat = remember { SimpleDateFormat("EEEE, MMM d, yyyy", Locale.getDefault()) }
+    val dbHelper = remember { TaskDatabaseHelper.getInstance(context) }
+    val nowMillis by rememberNowMillis()
 
-    var selectedDateDb by remember { mutableStateOf(dateFormatDb.format(calendar.time)) }
-    var selectedDateDisplay by remember { mutableStateOf(displayDateFormat.format(calendar.time)) }
+    var selectedDate by remember(initialDate) {
+        mutableStateOf(TaskTime.parseDate(initialDate.orEmpty()) ?: LocalDate.now())
+    }
+    val selectedDateDb = TaskTime.formatDate(selectedDate)
+    val selectedDateDisplay = remember(selectedDate) {
+        selectedDate.format(DateTimeFormatter.ofPattern("EEEE, MMM d, yyyy", Locale.getDefault()))
+    }
+
     var tasksForDate by remember { mutableStateOf(listOf<Task>()) }
     var taskToDelete by remember { mutableStateOf<Task?>(null) }
 
-    fun refreshTasks() {
-        tasksForDate = dbHelper.getTasksForDate(selectedDateDb)
-    }
-
     LaunchedEffect(selectedDateDb) {
-        refreshTasks()
-    }
-
-    fun parseTimeToMillis(dateStr: String, timeStr: String): Long {
-        val formats = listOf(
-            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.US),
-            SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.getDefault()),
-            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US),
-            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-        )
-        for (f in formats) {
-            try {
-                f.isLenient = true
-                val parsed = f.parse("$dateStr ${timeStr.trim().replace("\u00A0", " ")}")
-                if (parsed != null) return parsed.time
-            } catch (_: Exception) {}
-        }
-        return 0L
-    }
-
-    fun getRuntimeStatus(task: Task): String {
-        if (task.status == "COMPLETED") return "COMPLETED"
-        val now = System.currentTimeMillis()
-        val startMillis = parseTimeToMillis(task.date, task.startTime)
-        val endMillis = if (task.endTime.isNotBlank()) parseTimeToMillis(task.date, task.endTime) else 0L
-
-        if (startMillis == 0L) return task.status
-
-        return when {
-            endMillis > startMillis && now in startMillis..endMillis -> "IN_PROGRESS"
-            endMillis > 0L && now > endMillis -> "IN_PROGRESS"
-            now >= startMillis && endMillis == 0L -> "IN_PROGRESS"
-            else -> "UPCOMING"
+        dbHelper.changes.onStart { emit(Unit) }.collectLatest {
+            tasksForDate = withContext(Dispatchers.IO) { dbHelper.getTasksForDate(selectedDateDb) }
         }
     }
 
-    // Native DatePickerDialog
-    val datePickerDialog = remember {
+    // Native DatePickerDialog keyed on selectedDate
+    val datePickerDialog = remember(selectedDate) {
         DatePickerDialog(
             context,
             { _, year, month, dayOfMonth ->
-                val chosen = Calendar.getInstance().apply {
-                    set(year, month, dayOfMonth)
-                }
-                selectedDateDb = dateFormatDb.format(chosen.time)
-                selectedDateDisplay = displayDateFormat.format(chosen.time)
+                selectedDate = LocalDate.of(year, month + 1, dayOfMonth)
             },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
+            selectedDate.year,
+            selectedDate.monthValue - 1,
+            selectedDate.dayOfMonth
         )
     }
 
@@ -136,7 +121,6 @@ fun TasksScreen(
                         dbHelper.deleteTask(target.id)
                         NotificationScheduler.cancelTaskNotification(context, target.id)
                         taskToDelete = null
-                        refreshTasks()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
                     shape = RoundedCornerShape(10.dp)
@@ -266,31 +250,36 @@ fun TasksScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Section: Tasks List for Selected Date
-            Text(
-                text = "SCHEDULED TIMELINE",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 1.sp
-                ),
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-            )
-
+            // Tasks List
             if (tasksForDate.isEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(32.dp),
+                            .padding(28.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(CoralPrimary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = "Empty",
+                                tint = CoralPrimary,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = "No tasks for this day",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -312,9 +301,10 @@ fun TasksScreen(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         tasksForDate.forEachIndexed { index, task ->
-                            val isCompleted = task.status == "COMPLETED"
-                            val runtimeStatus = getRuntimeStatus(task)
-                            val isInProgress = runtimeStatus == "IN_PROGRESS"
+                            val isCompleted = task.status == TaskStatus.COMPLETED
+                            val phase = TaskPhaseResolver.resolve(task, nowMillis)
+                            val isInProgress = phase == TaskPhase.IN_PROGRESS
+                            val isOverdue = phase == TaskPhase.OVERDUE
 
                             val timeSpan = if (task.endTime.isNotBlank()) {
                                 "${task.startTime} – ${task.endTime}"
@@ -337,15 +327,14 @@ fun TasksScreen(
                                     // Status Toggle Checkbox
                                     IconButton(
                                         onClick = {
-                                            val newStatus = if (isCompleted) "UPCOMING" else "COMPLETED"
+                                            val newStatus = if (isCompleted) TaskStatus.UPCOMING else TaskStatus.COMPLETED
                                             val updated = task.copy(status = newStatus)
                                             dbHelper.updateTask(updated)
-                                            if (newStatus == "COMPLETED") {
+                                            if (newStatus == TaskStatus.COMPLETED) {
                                                 NotificationScheduler.cancelTaskNotification(context, task.id)
                                             } else {
                                                 NotificationScheduler.scheduleTaskNotification(context, updated)
                                             }
-                                            refreshTasks()
                                         },
                                         modifier = Modifier.size(24.dp)
                                     ) {
@@ -409,8 +398,9 @@ fun TasksScreen(
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(
                                                 when {
-                                                    isInProgress -> CoralPrimary.copy(alpha = 0.15f)
                                                     isCompleted -> EmeraldSuccess.copy(alpha = 0.15f)
+                                                    isInProgress -> CoralPrimary.copy(alpha = 0.15f)
+                                                    isOverdue -> MaterialTheme.colorScheme.error.copy(alpha = 0.15f)
                                                     else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
                                                 }
                                             )
@@ -418,15 +408,17 @@ fun TasksScreen(
                                     ) {
                                         Text(
                                             text = when {
-                                                isInProgress -> "IN PROGRESS"
                                                 isCompleted -> "COMPLETED"
+                                                isInProgress -> "IN PROGRESS"
+                                                isOverdue -> "OVERDUE"
                                                 else -> "UPCOMING"
                                             },
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = when {
-                                                isInProgress -> CoralPrimary
                                                 isCompleted -> EmeraldSuccess
+                                                isInProgress -> CoralPrimary
+                                                isOverdue -> MaterialTheme.colorScheme.error
                                                 else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                             }
                                         )

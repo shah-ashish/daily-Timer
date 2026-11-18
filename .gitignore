@@ -37,12 +37,15 @@ local.properties
 captures/
 
 # Sensitive Keystore configuration
+*.jks
+*.keystore
 keystore.properties
 
 # Local specifications & planning
 agent.md
 coder.md
 project/
+bug and fixex/
 
 # OS files
 .DS_Store

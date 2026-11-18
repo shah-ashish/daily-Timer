@@ -24,12 +24,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dailytimer.app.data.db.TaskDatabaseHelper
 import com.dailytimer.app.data.model.Task
+import com.dailytimer.app.data.model.TaskStatus
+import com.dailytimer.app.domain.TaskTime
+import com.dailytimer.app.notification.LateReminderPolicy
 import com.dailytimer.app.notification.NotificationScheduler
 import com.dailytimer.app.ui.navigation.BottomNavBar
 import com.dailytimer.app.ui.navigation.NavTab
 import com.dailytimer.app.ui.theme.CoralPrimary
 import com.dailytimer.app.ui.theme.EmeraldSuccess
-import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.LocalTime
 import java.util.*
 
 enum class CreateMode {
@@ -37,38 +41,21 @@ enum class CreateMode {
     ADD_TO_EXISTING
 }
 
-private fun parseTimeToMillis(dateStr: String, timeStr: String): Long {
-    val formats = listOf(
-        SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.US),
-        SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.getDefault()),
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US),
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-    )
-    for (f in formats) {
-        try {
-            f.isLenient = true
-            val parsed = f.parse("$dateStr ${timeStr.trim().replace("\u00A0", " ")}")
-            if (parsed != null) return parsed.time
-        } catch (_: Exception) {}
-    }
-    return 0L
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateTaskScreen(
-    onTaskCreated: () -> Unit = {},
+    initialDate: String? = null,
+    onTaskCreated: (date: String) -> Unit = {},
     selectedTab: NavTab = NavTab.CREATE,
     onTabSelected: (NavTab) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val dbHelper = remember { TaskDatabaseHelper(context) }
-    val calendar = remember { Calendar.getInstance() }
-    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
-    val timeFormat = remember { SimpleDateFormat("hh:mm a", Locale.US) }
+    val dbHelper = remember { TaskDatabaseHelper.getInstance(context) }
 
     var selectedMode by remember { mutableStateOf(CreateMode.NEW_TASK) }
-    var taskDate by remember { mutableStateOf(dateFormat.format(calendar.time)) }
+    var taskDate by remember(initialDate) {
+        mutableStateOf(initialDate ?: TaskTime.formatDate(LocalDate.now()))
+    }
     var startTime by remember { mutableStateOf("09:30 AM") }
     var endTime by remember { mutableStateOf("10:30 AM") }
     var taskName by remember { mutableStateOf("") }
@@ -99,74 +86,60 @@ fun CreateTaskScreen(
         }
     }
 
-    // Date picker dialog
-    val datePickerDialog = remember {
+    // Date picker dialog keyed on taskDate
+    val datePickerDialog = remember(taskDate) {
+        val initial = TaskTime.parseDate(taskDate) ?: LocalDate.now()
         DatePickerDialog(
             context,
-            { _, year, month, dayOfMonth ->
-                val chosen = Calendar.getInstance().apply {
-                    set(year, month, dayOfMonth)
-                }
-                taskDate = dateFormat.format(chosen.time)
+            { _, year, month, day ->
+                taskDate = TaskTime.formatDate(LocalDate.of(year, month + 1, day))
             },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
+            initial.year,
+            initial.monthValue - 1,
+            initial.dayOfMonth
         )
     }
 
     // Start time picker dialog
-    val startTimePickerDialog = remember {
+    val startTimePickerDialog = remember(startTime, endTime) {
+        val currentStart = TaskTime.parseTime(startTime) ?: LocalTime.of(9, 30)
         TimePickerDialog(
             context,
             { _, hourOfDay, minute ->
-                val chosenTime = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, hourOfDay)
-                    set(Calendar.MINUTE, minute)
-                }
-                val newStart = timeFormat.format(chosenTime.time)
-                startTime = newStart
+                val chosenTime = LocalTime.of(hourOfDay, minute)
+                startTime = TaskTime.formatTime(chosenTime)
                 errorMessage = null
 
-                val targetDate = if (selectedMode == CreateMode.NEW_TASK) taskDate else selectedExistingDate.ifBlank { taskDate }
-                val sMillis = parseTimeToMillis(targetDate, newStart)
-                val eMillis = parseTimeToMillis(targetDate, endTime)
-                if (sMillis != 0L && (eMillis == 0L || eMillis <= sMillis)) {
-                    val autoEnd = Calendar.getInstance().apply {
-                        timeInMillis = sMillis + 60 * 60 * 1000L
-                    }
-                    endTime = timeFormat.format(autoEnd.time)
+                val end = TaskTime.parseTime(endTime)
+                if (end != null && !end.isAfter(chosenTime)) {
+                    val autoEnd = if (chosenTime.hour == 23) LocalTime.of(23, 59) else chosenTime.plusHours(1)
+                    endTime = TaskTime.formatTime(autoEnd)
                 }
             },
-            9,
-            30,
+            currentStart.hour,
+            currentStart.minute,
             false
         )
     }
 
     // End time picker dialog
-    val endTimePickerDialog = remember {
+    val endTimePickerDialog = remember(startTime, endTime) {
+        val currentEnd = TaskTime.parseTime(endTime) ?: LocalTime.of(10, 30)
         TimePickerDialog(
             context,
             { _, hourOfDay, minute ->
-                val chosenTime = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, hourOfDay)
-                    set(Calendar.MINUTE, minute)
-                }
-                val newEnd = timeFormat.format(chosenTime.time)
-                endTime = newEnd
+                val chosenTime = LocalTime.of(hourOfDay, minute)
+                endTime = TaskTime.formatTime(chosenTime)
 
-                val targetDate = if (selectedMode == CreateMode.NEW_TASK) taskDate else selectedExistingDate.ifBlank { taskDate }
-                val sMillis = parseTimeToMillis(targetDate, startTime)
-                val eMillis = parseTimeToMillis(targetDate, newEnd)
-                if (sMillis != 0L && eMillis != 0L && eMillis <= sMillis) {
+                val start = TaskTime.parseTime(startTime)
+                if (start != null && !chosenTime.isAfter(start)) {
                     errorMessage = "End time cannot be before or equal to start time"
                 } else {
                     errorMessage = null
                 }
             },
-            10,
-            30,
+            currentEnd.hour,
+            currentEnd.minute,
             false
         )
     }
@@ -669,10 +642,10 @@ fun CreateTaskScreen(
                         selectedExistingDate
                     }
 
-                    val startMillis = parseTimeToMillis(finalDate, startTime)
-                    val endMillis = parseTimeToMillis(finalDate, endTime)
-                    if (startMillis != 0L && endMillis != 0L && endMillis <= startMillis) {
-                        errorMessage = "End time cannot be before or equal to start time"
+                    val start = TaskTime.parseTime(startTime)
+                    val end = TaskTime.parseTime(endTime)
+                    if (start != null && end != null && !end.isAfter(start)) {
+                        errorMessage = "End time must be after start time"
                         return@Button
                     }
 
@@ -682,20 +655,24 @@ fun CreateTaskScreen(
                         endTime = endTime,
                         taskName = taskName.trim(),
                         description = description.trim(),
-                        status = "UPCOMING"
+                        status = TaskStatus.UPCOMING
                     )
 
                     val rowId = dbHelper.insertTask(newTask)
                     if (rowId != -1L) {
                         val created = newTask.copy(id = rowId)
-                        NotificationScheduler.scheduleTaskNotification(context, created)
+                        NotificationScheduler.scheduleTaskNotification(
+                            context = context,
+                            task = created,
+                            latePolicy = LateReminderPolicy.FIRE_NOW
+                        )
                         successMessage = "Task created successfully for $finalDate!"
                         taskName = ""
                         description = ""
                         if (selectedMode == CreateMode.ADD_TO_EXISTING) {
                             refreshExistingDates()
                         }
-                        onTaskCreated()
+                        onTaskCreated(finalDate)
                     } else {
                         errorMessage = "Failed to save task into database"
                     }

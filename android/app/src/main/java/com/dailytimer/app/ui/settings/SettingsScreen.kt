@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -16,9 +17,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -31,17 +35,56 @@ import com.dailytimer.app.ui.theme.CoralPrimary
 import com.dailytimer.app.ui.updater.UpdateCard
 
 @Composable
+private fun ReminderLeadMinutesField(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    var text by remember { mutableStateOf(SettingsPreferences.getReminderLeadMinutes(context).toString()) }
+
+    fun commit() {
+        val saved = SettingsPreferences.getReminderLeadMinutes(context)
+        val minutes = text.toIntOrNull()
+            ?.takeIf { it in SettingsPreferences.MIN_LEAD_MINUTES..SettingsPreferences.MAX_LEAD_MINUTES }
+        if (minutes == null) {
+            text = saved.toString() // invalid or empty: revert
+            return
+        }
+        if (minutes != saved) {
+            SettingsPreferences.setReminderLeadMinutes(context, minutes)
+            NotificationScheduler.rescheduleAll(context, minutes)
+        }
+        text = minutes.toString()
+    }
+
+    DisposableEffect(Unit) { onDispose { commit() } } // user switched tabs while editing
+
+    BasicTextField(
+        value = text,
+        onValueChange = { if (it.length <= 3 && it.all(Char::isDigit)) text = it },
+        modifier = modifier
+            .width(52.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .onFocusChanged { if (!it.isFocused) commit() },
+        textStyle = MaterialTheme.typography.bodyMedium.copy(
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurface,
+        ),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { commit(); focusManager.clearFocus() }),
+        singleLine = true,
+    )
+}
+
+@Composable
 fun SettingsScreen(
     isDarkMode: Boolean,
     onThemeToggle: (Boolean) -> Unit,
     selectedTab: NavTab = NavTab.SETTINGS,
     onTabSelected: (NavTab) -> Unit = {}
 ) {
-    val context = LocalContext.current
-    var notificationLeadMinsText by remember { 
-        mutableStateOf(SettingsPreferences.getReminderLeadMinutes(context).toString()) 
-    }
-
     Scaffold(
         bottomBar = {
             BottomNavBar(
@@ -210,37 +253,12 @@ fun SettingsScreen(
                             )
                         }
 
-                        // Single Editable Number Box
+                        // Single Editable Number Box with Safe Commit
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            BasicTextField(
-                                value = notificationLeadMinsText,
-                                onValueChange = { newValue ->
-                                    if (newValue.length <= 3 && newValue.all { it.isDigit() }) {
-                                        notificationLeadMinsText = newValue
-                                        val mins = newValue.toIntOrNull()
-                                        if (mins != null && mins > 0) {
-                                            SettingsPreferences.setReminderLeadMinutes(context, mins)
-                                            NotificationScheduler.rescheduleAll(context, mins)
-                                        }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .width(52.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    textAlign = TextAlign.Center,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                ),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true
-                            )
+                            ReminderLeadMinutesField()
                             Text(
                                 text = "min",
                                 fontSize = 13.sp,

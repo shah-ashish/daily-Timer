@@ -10,9 +10,13 @@ plugins {
 val keystorePropertiesFile = rootProject.file("app/keystore/keystore.properties")
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.exists()) {
-        load(FileInputStream(keystorePropertiesFile))
+        FileInputStream(keystorePropertiesFile).use(::load)
     }
 }
+
+fun signingValue(propertyKey: String, envKey: String): String? =
+    keystoreProperties.getProperty(propertyKey)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(envKey)?.takeIf { it.isNotBlank() }
 
 android {
     namespace = "com.dailytimer.app"
@@ -22,8 +26,8 @@ android {
         applicationId = "com.dailytimer.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.0.7"
+        versionCode = 9
+        versionName = "1.0.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -33,19 +37,14 @@ android {
 
     signingConfigs {
         create("release") {
-            val keyStorePath = keystoreProperties.getProperty("storeFile") 
-                ?: System.getenv("KEYSTORE_PATH") 
-                ?: "keystore/keystore.jks"
-            storeFile = rootProject.file("app/$keyStorePath")
-            storePassword = keystoreProperties.getProperty("storePassword") 
-                ?: System.getenv("KEYSTORE_PASSWORD") 
-                ?: "dailytimer123"
-            keyAlias = keystoreProperties.getProperty("keyAlias") 
-                ?: System.getenv("KEY_ALIAS") 
-                ?: "dailytimer"
-            keyPassword = keystoreProperties.getProperty("keyPassword") 
-                ?: System.getenv("KEY_PASSWORD") 
-                ?: "dailytimer123"
+            val path = signingValue("storeFile", "KEYSTORE_PATH")
+            if (path != null) {
+                val file = File(path)
+                storeFile = if (file.isAbsolute) file else rootProject.file("app/$path")
+                storePassword = signingValue("storePassword", "KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "KEY_PASSWORD")
+            }
         }
     }
 
@@ -56,10 +55,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
-        }
-        debug {
-            signingConfig = signingConfigs.getByName("release")
+            val releaseSigning = signingConfigs.getByName("release")
+            signingConfig = releaseSigning.takeIf { it.storeFile != null && it.storeFile!!.exists() }
         }
     }
 

@@ -13,10 +13,13 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 @Serializable
@@ -25,6 +28,7 @@ data class VersionPayload(
     val versionName: String,
     val minSdk: Int = 26,
     val downloadUrl: String,
+    val sha256: String? = null,
     val releaseNotes: String = ""
 )
 
@@ -44,7 +48,7 @@ sealed interface UpdateStatus {
 
 /**
  * Idiomatic, standalone AppUpdater handling version check, byte-stream download with progress,
- * integrity verification, and FileProvider installation.
+ * cryptographic hash verification, and FileProvider installation.
  */
 class AppUpdater(
     private val context: Context,
@@ -72,99 +76,112 @@ class AppUpdater(
      */
     fun checkUpdateFlow(endpointUrl: String): Flow<UpdateStatus> = flow {
         emit(UpdateStatus.Checking)
-        try {
-            val request = Request.Builder().url(endpointUrl).build()
-            val response = httpClient.newCall(request).execute()
+        emit(fetchStatus(endpointUrl))
+    }.flowOn(Dispatchers.IO)
 
+    private fun fetchStatus(endpointUrl: String): UpdateStatus = try {
+        httpClient.newCall(Request.Builder().url(endpointUrl).build()).execute().use { response ->
             if (!response.isSuccessful) {
-                emit(UpdateStatus.Failed("HTTP Error ${response.code}: Unable to reach update server"))
-                return@flow
+                return@use UpdateStatus.Failed("HTTP Error ${response.code}: Unable to reach update server")
             }
 
             val bodyString = response.body?.string()
-                ?: throw IllegalStateException("Empty response from update server")
+                ?: return@use UpdateStatus.Failed("Empty response from update server")
 
             val payload = json.decodeFromString<VersionPayload>(bodyString)
-            if (payload.versionCode > currentVersionCode) {
-                emit(UpdateStatus.Available(payload))
-            } else {
-                emit(UpdateStatus.UpToDate(currentVersionName))
+            when {
+                payload.versionCode <= currentVersionCode -> UpdateStatus.UpToDate(currentVersionName)
+                payload.minSdk > Build.VERSION.SDK_INT -> UpdateStatus.Failed("Update requires Android API ${payload.minSdk}")
+                else -> UpdateStatus.Available(payload)
             }
-        } catch (e: Exception) {
-            emit(UpdateStatus.Failed(e.localizedMessage ?: "Unknown check update error"))
         }
-    }.flowOn(Dispatchers.IO)
+    } catch (e: IOException) {
+        UpdateStatus.Failed(e.localizedMessage ?: "Network error while checking for updates")
+    } catch (e: IllegalArgumentException) {
+        UpdateStatus.Failed("Malformed update manifest")
+    } catch (e: Exception) {
+        UpdateStatus.Failed(e.localizedMessage ?: "Unknown check update error")
+    }
 
     /**
      * Downloads the APK file while emitting reactive byte-stream progress.
+     * Computes running SHA-256 and verifies checksum before marking ready to install.
      * Uses a temporary .tmp file to prevent incomplete / corrupted APKs from being installed.
      */
-    fun downloadApkFlow(downloadUrl: String): Flow<UpdateStatus> = flow {
+    fun downloadApkFlow(payload: VersionPayload): Flow<UpdateStatus> = flow {
+        val url = payload.downloadUrl.toHttpUrlOrNull()
+        val expectedSha = payload.sha256?.lowercase()
+        if (url == null || !url.isHttps) {
+            emit(UpdateStatus.Failed("Update URL must use HTTPS"))
+            return@flow
+        }
+        if (expectedSha == null || !SHA256_HEX.matches(expectedSha)) {
+            emit(UpdateStatus.Failed("Update manifest has no valid SHA-256 checksum"))
+            return@flow
+        }
+
+        val baseDir = context.getExternalFilesDir(null) ?: context.externalCacheDir ?: context.cacheDir
+        val destinationDir = File(baseDir, "updates").apply { mkdirs() }
+        val apkFile = File(destinationDir, "DailyTimer-update.apk")
+        val tmpFile = File(destinationDir, "DailyTimer-update.apk.tmp")
+
+        // Clean up previous artifacts
+        if (tmpFile.exists()) tmpFile.delete()
+        if (apkFile.exists()) apkFile.delete()
+
         try {
-            val request = Request.Builder().url(downloadUrl).build()
-            val response = httpClient.newCall(request).execute()
-
-            if (!response.isSuccessful) {
-                emit(UpdateStatus.Failed("Failed to download APK: HTTP ${response.code}"))
-                return@flow
-            }
-
-            val body = response.body ?: throw IllegalStateException("Empty body response")
-            val totalBytes = body.contentLength()
-
-            // Save to external files dir if available (accessible to Xiaomi/Samsung PackageInstaller)
-            val baseDir = context.getExternalFilesDir(null) ?: context.externalCacheDir ?: context.cacheDir
-            val destinationDir = File(baseDir, "updates").apply { mkdirs() }
-            val apkFile = File(destinationDir, "DailyTimer-update.apk")
-            val tmpFile = File(destinationDir, "DailyTimer-update.apk.tmp")
-
-            // Remove any leftover corrupted files
-            if (tmpFile.exists()) tmpFile.delete()
-            if (apkFile.exists()) apkFile.delete()
-
-            body.byteStream().use { inputStream ->
-                FileOutputStream(tmpFile).use { outputStream ->
-                    val buffer = ByteArray(16 * 1024)
-                    var bytesRead: Long = 0
-                    var read: Int
-                    var lastPercent = -1
-
-                    while (inputStream.read(buffer).also { read = it } != -1) {
-                        outputStream.write(buffer, 0, read)
-                        bytesRead += read
-
-                        val progress = if (totalBytes > 0) ((bytesRead * 100) / totalBytes).toInt().coerceIn(0, 100) else 0
-                        if (progress != lastPercent) {
-                            lastPercent = progress
-                            emit(UpdateStatus.Downloading(progress, bytesRead, totalBytes))
-                        }
-                    }
-                    outputStream.flush()
+            httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                val body = response.body
+                if (!response.isSuccessful || body == null) {
+                    emit(UpdateStatus.Failed("Failed to download APK: HTTP ${response.code}"))
+                    return@flow
                 }
+                val totalBytes = body.contentLength()
+                val digest = MessageDigest.getInstance("SHA-256")
+
+                body.byteStream().use { inputStream ->
+                    FileOutputStream(tmpFile).use { outputStream ->
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        var bytesRead: Long = 0
+                        var read: Int
+                        var lastPercent = -1
+
+                        while (inputStream.read(buffer).also { read = it } != -1) {
+                            outputStream.write(buffer, 0, read)
+                            digest.update(buffer, 0, read)
+                            bytesRead += read
+
+                            val progress = if (totalBytes > 0) ((bytesRead * 100) / totalBytes).toInt().coerceIn(0, 100) else 0
+                            if (progress != lastPercent) {
+                                lastPercent = progress
+                                emit(UpdateStatus.Downloading(progress, bytesRead, totalBytes))
+                            }
+                        }
+                        outputStream.flush()
+                    }
+                }
+
+                val actualSha = digest.digest().joinToString("") { "%02x".format(it) }
+
+                when {
+                    !tmpFile.exists() || tmpFile.length() < 1_000_000L ->
+                        emit(UpdateStatus.Failed("Download incomplete or corrupt. Please try again."))
+                    totalBytes > 0 && tmpFile.length() != totalBytes ->
+                        emit(UpdateStatus.Failed("Download size mismatch (${tmpFile.length()} vs $totalBytes). Please retry."))
+                    actualSha != expectedSha ->
+                        emit(UpdateStatus.Failed("Checksum mismatch: the file is corrupted or was tampered with"))
+                    !tmpFile.renameTo(apkFile) ->
+                        emit(UpdateStatus.Failed("Could not finalize the downloaded APK"))
+                    else -> {
+                        apkFile.setReadable(true, false)
+                        emit(UpdateStatus.ReadyToInstall(apkFile))
+                    }
+                }
+                if (tmpFile.exists()) tmpFile.delete()
             }
-
-            // Verify download integrity
-            if (!tmpFile.exists() || tmpFile.length() < 1_000_000L) {
-                emit(UpdateStatus.Failed("Download incomplete or corrupt. Please try again."))
-                return@flow
-            }
-
-            if (totalBytes > 0 && tmpFile.length() != totalBytes) {
-                emit(UpdateStatus.Failed("Download size mismatch (${tmpFile.length()} vs $totalBytes). Please retry."))
-                return@flow
-            }
-
-            // Atomically rename to final APK
-            if (apkFile.exists()) apkFile.delete()
-            val success = tmpFile.renameTo(apkFile)
-            val finalApk = if (success) apkFile else tmpFile
-
-            // Make world-readable for PackageInstaller
-            finalApk.setReadable(true, false)
-
-            emit(UpdateStatus.ReadyToInstall(finalApk))
-        } catch (e: Exception) {
-            emit(UpdateStatus.Failed(e.localizedMessage ?: "APK Download interrupted"))
+        } catch (e: IOException) {
+            if (tmpFile.exists()) tmpFile.delete()
+            emit(UpdateStatus.Failed(e.localizedMessage ?: "APK download interrupted"))
         }
     }.flowOn(Dispatchers.IO)
 
@@ -221,5 +238,10 @@ class AppUpdater(
 
             context.startActivity(installIntent)
         }
+    }
+
+    companion object {
+        private const val BUFFER_SIZE = 16 * 1024
+        private val SHA256_HEX = Regex("^[0-9a-f]{64}$")
     }
 }
